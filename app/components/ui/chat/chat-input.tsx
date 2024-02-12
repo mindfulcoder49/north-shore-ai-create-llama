@@ -62,7 +62,7 @@ export default function ChatInput(
       {imageUrl && (
         <UploadImagePreview url={imageUrl} onRemove={onRemovePreviewImage} />
       )}
-      <div className="flex w-full items-start justify-between gap-4 ">
+      <div className="flex-column items-start justify-between gap-4 lg:flex">
         <Input
           autoFocus
           name="message"
