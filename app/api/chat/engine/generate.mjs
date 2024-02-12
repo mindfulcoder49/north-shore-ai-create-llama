@@ -37,6 +37,7 @@ async function generateDatasource(serviceContext) {
     await VectorStoreIndex.fromDocuments(documents, {
       storageContext,
       serviceContext,
+      show_progress: true, 
     });
   });
   console.log(`Storage context successfully generated in ${ms / 1000}s.`);
