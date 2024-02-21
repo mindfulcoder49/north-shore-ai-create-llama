@@ -81,14 +81,13 @@
       "calt" 1;
   }
   .background-gradient {
-    background-color: #fff;
-    background-image: radial-gradient(
-        at 21% 11%,
-        rgba(186, 186, 233, 0.53) 0,
-        transparent 50%
-      ),
-      radial-gradient(at 85% 0, hsla(46, 57%, 78%, 0.52) 0, transparent 50%),
-      radial-gradient(at 91% 36%, rgba(194, 213, 255, 0.68) 0, transparent 50%),
-      radial-gradient(at 8% 40%, rgba(251, 218, 239, 0.46) 0, transparent 50%);
+    background-color: #121212; /* Dark background for contrast */
+    background-image: 
+      radial-gradient(at 20% 80%, hsla(210, 80%, 60%, 0.8) 0, transparent 30%),
+      radial-gradient(at 90% 20%, hsla(30, 90%, 60%, 0.7) 0, transparent 30%),
+      radial-gradient(at 30% 30%, hsla(270, 70%, 70%, 0.8) 0, transparent 70%),
+      radial-gradient(at 90% 90%, hsla(180, 75%, 65%, 0.6) 0, transparent 70%);
+    background-blend-mode: screen;
   }
+  
 }

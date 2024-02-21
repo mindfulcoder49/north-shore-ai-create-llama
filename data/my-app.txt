@@ -1,0 +1,1354 @@
+Chat Persistence Implementation
+February 16, 2024
+This conversation may reflect the link creator’s personalized data, which isn’t shared and can meaningfully change how the model responds.
+Here's an app. what do i modify to allow conversation persistence between sessions, logins and individual user accounts:
+
+./files.txt
+./components/ui/upload-image-preview.tsx
+import { XCircleIcon } from "lucide-react";
+import Image from "next/image";
+import { cn } from "./lib/utils";
+
+export default function UploadImagePreview({
+  url,
+  onRemove,
+}: {
+  url: string;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="relative w-20 h-20 group">
+      <Image
+        src={url}
+        alt="Uploaded image"
+        fill
+        className="object-cover w-full h-full rounded-xl hover:brightness-75"
+      />
+      <div
+        className={cn(
+          "absolute -top-2 -right-2 w-6 h-6 z-10 bg-gray-500 text-white rounded-full hidden group-hover:block",
+        )}
+      >
+        <XCircleIcon
+          className="w-6 h-6 bg-gray-500 text-white rounded-full"
+          onClick={onRemove}
+        />
+      </div>
+    </div>
+  );
+}
+./components/ui/chat/codeblock.tsx
+"use client";
+
+import { Check, Copy, Download } from "lucide-react";
+import { FC, memo } from "react";
+import { Prism, SyntaxHighlighterProps } from "react-syntax-highlighter";
+import { coldarkDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
+
+import { Button } from "../button";
+import { useCopyToClipboard } from "./use-copy-to-clipboard";
+
+// TODO: Remove this when @type/react-syntax-highlighter is updated
+const SyntaxHighlighter = Prism as unknown as FC<SyntaxHighlighterProps>;
+
+interface Props {
+  language: string;
+  value: string;
+}
+
+interface languageMap {
+  [key: string]: string | undefined;
+}
+
+export const programmingLanguages: languageMap = {
+  javascript: ".js",
+  python: ".py",
+  java: ".java",
+  c: ".c",
+  cpp: ".cpp",
+  "c++": ".cpp",
+  "c#": ".cs",
+  ruby: ".rb",
+  php: ".php",
+  swift: ".swift",
+  "objective-c": ".m",
+  kotlin: ".kt",
+  typescript: ".ts",
+  go: ".go",
+  perl: ".pl",
+  rust: ".rs",
+  scala: ".scala",
+  haskell: ".hs",
+  lua: ".lua",
+  shell: ".sh",
+  sql: ".sql",
+  html: ".html",
+  css: ".css",
+  // add more file extensions here, make sure the key is same as language prop in CodeBlock.tsx component
+};
+
+export const generateRandomString = (length: number, lowercase = false) => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXY3456789"; // excluding similar looking characters like Z, 2, I, 1, O, 0
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return lowercase ? result.toLowerCase() : result;
+};
+
+const CodeBlock: FC<Props> = memo(({ language, value }) => {
+  const { isCopied, copyToClipboard } = useCopyToClipboard({ timeout: 2000 });
+
+  const downloadAsFile = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const fileExtension = programmingLanguages[language] || ".file";
+    const suggestedFileName = `file-${generateRandomString(
+      3,
+      true,
+    )}${fileExtension}`;
+    const fileName = window.prompt("Enter file name" || "", suggestedFileName);
+
+    if (!fileName) {
+      // User pressed cancel on prompt.
+      return;
+    }
+
+    const blob = new Blob([value], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = fileName;
+    link.href = url;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const onCopy = () => {
+    if (isCopied) return;
+    copyToClipboard(value);
+  };
+
+  return (
+    <div className="codeblock relative w-full bg-zinc-950 font-sans">
+      <div className="flex w-full items-center justify-between bg-zinc-800 px-6 py-2 pr-4 text-zinc-100">
+        <span className="text-xs lowercase">{language}</span>
+        <div className="flex items-center space-x-1">
+          <Button variant="ghost" onClick={downloadAsFile} size="icon">
+            <Download />
+            <span className="sr-only">Download</span>
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onCopy}>
+            {isCopied ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+            <span className="sr-only">Copy code</span>
+          </Button>
+        </div>
+      </div>
+      <SyntaxHighlighter
+        language={language}
+        style={coldarkDark}
+        PreTag="div"
+        showLineNumbers
+        customStyle={{
+          width: "100%",
+          background: "transparent",
+          padding: "1.5rem 1rem",
+          borderRadius: "0.5rem",
+        }}
+        codeTagProps={{
+          style: {
+            fontSize: "0.9rem",
+            fontFamily: "var(--font-mono)",
+          },
+        }}
+      >
+        {value}
+      </SyntaxHighlighter>
+    </div>
+  );
+});
+CodeBlock.displayName = "CodeBlock";
+
+export { CodeBlock };
+./components/ui/chat/chat-input.tsx
+import { useState } from "react";
+import { Button } from "../button";
+import FileUploader from "../file-uploader";
+import { Input } from "../input";
+import UploadImagePreview from "../upload-image-preview";
+import { ChatHandler } from "./chat.interface";
+
+export default function ChatInput(
+  props: Pick<
+    ChatHandler,
+    | "isLoading"
+    | "input"
+    | "onFileUpload"
+    | "onFileError"
+    | "handleSubmit"
+    | "handleInputChange"
+  > & {
+    multiModal?: boolean;
+  },
+) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (imageUrl) {
+      props.handleSubmit(e, {
+        data: { imageUrl: imageUrl },
+      });
+      setImageUrl(null);
+      return;
+    }
+    props.handleSubmit(e);
+  };
+
+  const onRemovePreviewImage = () => setImageUrl(null);
+
+  const handleUploadImageFile = async (file: File) => {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+    setImageUrl(base64);
+  };
+
+  const handleUploadFile = async (file: File) => {
+    try {
+      if (props.multiModal && file.type.startsWith("image/")) {
+        return await handleUploadImageFile(file);
+      }
+      props.onFileUpload?.(file);
+    } catch (error: any) {
+      props.onFileError?.(error.message);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="rounded-xl bg-white p-4 shadow-xl space-y-4"
+    >
+      {imageUrl && (
+        <UploadImagePreview url={imageUrl} onRemove={onRemovePreviewImage} />
+      )}
+      <div className="flex-column items-start justify-between gap-4 lg:flex">
+        <Input
+          autoFocus
+          name="message"
+          placeholder="Type a message"
+          className="flex-1"
+          value={props.input}
+          onChange={props.handleInputChange}
+        />
+        <FileUploader
+          onFileUpload={handleUploadFile}
+          onFileError={props.onFileError}
+        />
+        <Button type="submit" disabled={props.isLoading}>
+          Send message
+        </Button>
+      </div>
+    </form>
+  );
+}
+./components/ui/chat/chat-avatar.tsx
+import { User2 } from "lucide-react";
+import Image from "next/image";
+
+export default function ChatAvatar({ role }: { role: string }) {
+  if (role === "user") {
+    return (
+      <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-md border bg-background shadow">
+        <User2 className="h-4 w-4" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-md border bg-black text-white shadow">
+      <Image
+        className="rounded-md"
+        src="/llama.png"
+        alt="Llama Logo"
+        width={24}
+        height={24}
+        priority
+      />
+    </div>
+  );
+}
+./components/ui/chat/chat-messages.tsx
+import { Loader2 } from "lucide-react";
+import { useEffect, useRef } from "react";
+
+import ChatActions from "./chat-actions";
+import ChatMessage from "./chat-message";
+import { ChatHandler } from "./chat.interface";
+
+export default function ChatMessages(
+  props: Pick<ChatHandler, "messages" | "isLoading" | "reload" | "stop">,
+) {
+  const scrollableChatContainerRef = useRef<HTMLDivElement>(null);
+  const messageLength = props.messages.length;
+  const lastMessage = props.messages[messageLength - 1];
+
+  const scrollToBottom = () => {
+    if (scrollableChatContainerRef.current) {
+      scrollableChatContainerRef.current.scrollTop =
+        scrollableChatContainerRef.current.scrollHeight;
+    }
+  };
+
+  const isLastMessageFromAssistant =
+    messageLength > 0 && lastMessage?.role !== "user";
+  const showReload =
+    props.reload && !props.isLoading && isLastMessageFromAssistant;
+  const showStop = props.stop && props.isLoading;
+
+  // `isPending` indicate
+  // that stream response is not yet received from the server,
+  // so we show a loading indicator to give a better UX.
+  const isPending = props.isLoading && !isLastMessageFromAssistant;
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messageLength, lastMessage]);
+
+  return (
+    <div className="w-full rounded-xl bg-white p-4 shadow-xl pb-0">
+      <div
+        className="flex h-[50vh] flex-col gap-5 divide-y overflow-y-auto pb-4"
+        ref={scrollableChatContainerRef}
+      >
+        {props.messages.map((m) => (
+          <ChatMessage key={m.id} {...m} />
+        ))}
+        {isPending && (
+          <div className="flex justify-center items-center pt-10">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </div>
+        )}
+      </div>
+      <div className="flex justify-end py-4">
+        <ChatActions
+          reload={props.reload}
+          stop={props.stop}
+          showReload={showReload}
+          showStop={showStop}
+        />
+      </div>
+    </div>
+  );
+}
+./components/ui/chat/chat-message.tsx
+import { Check, Copy } from "lucide-react";
+
+import { JSONValue, Message } from "ai";
+import Image from "next/image";
+import { Button } from "../button";
+import ChatAvatar from "./chat-avatar";
+import Markdown from "./markdown";
+import { useCopyToClipboard } from "./use-copy-to-clipboard";
+
+interface ChatMessageImageData {
+  type: "image_url";
+  image_url: {
+    url: string;
+  };
+}
+
+// This component will parse message data and render the appropriate UI.
+function ChatMessageData({ messageData }: { messageData: JSONValue }) {
+  const { image_url, type } = messageData as unknown as ChatMessageImageData;
+  if (type === "image_url") {
+    return (
+      <div className="rounded-md max-w-[200px] shadow-md">
+        <Image
+          src={image_url.url}
+          width={0}
+          height={0}
+          sizes="100vw"
+          style={{ width: "100%", height: "auto" }}
+          alt=""
+        />
+      </div>
+    );
+  }
+  return null;
+}
+
+export default function ChatMessage(chatMessage: Message) {
+  const { isCopied, copyToClipboard } = useCopyToClipboard({ timeout: 2000 });
+  return (
+    <div className="flex items-start gap-4 pr-5 pt-5">
+      <ChatAvatar role={chatMessage.role} />
+      <div className="group flex flex-1 justify-between gap-2">
+        <div className="flex-1 space-y-4">
+          {chatMessage.data && (
+            <ChatMessageData messageData={chatMessage.data} />
+          )}
+          <Markdown content={chatMessage.content} />
+        </div>
+        <Button
+          onClick={() => copyToClipboard(chatMessage.content)}
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 opacity-0 group-hover:opacity-100"
+        >
+          {isCopied ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+./components/ui/chat/markdown.tsx
+import { FC, memo } from "react";
+import ReactMarkdown, { Options } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+
+import { CodeBlock } from "./codeblock";
+
+const MemoizedReactMarkdown: FC<Options> = memo(
+  ReactMarkdown,
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children &&
+    prevProps.className === nextProps.className,
+);
+
+export default function Markdown({ content }: { content: string }) {
+  return (
+    <MemoizedReactMarkdown
+      className="prose dark:prose-invert prose-p:leading-relaxed prose-pre:p-0 break-words"
+      remarkPlugins={[remarkGfm, remarkMath]}
+      components={{
+        p({ children }) {
+          return <p className="mb-2 last:mb-0">{children}</p>;
+        },
+        code({ node, inline, className, children, ...props }) {
+          if (children.length) {
+            if (children[0] == "▍") {
+              return (
+                <span className="mt-1 animate-pulse cursor-default">▍</span>
+              );
+            }
+
+            children[0] = (children[0] as string).replace("`▍`", "▍");
+          }
+
+          const match = /language-(\w+)/.exec(className || "");
+
+          if (inline) {
+            return (
+              <code className={className} {...props}>
+                {children}
+              </code>
+            );
+          }
+
+          return (
+            <CodeBlock
+              key={Math.random()}
+              language={(match && match[1]) || ""}
+              value={String(children).replace(/\n$/, "")}
+              {...props}
+            />
+          );
+        },
+      }}
+    >
+      {content}
+    </MemoizedReactMarkdown>
+  );
+}
+./components/ui/chat/use-copy-to-clipboard.tsx
+"use client";
+
+import * as React from "react";
+
+export interface useCopyToClipboardProps {
+  timeout?: number;
+}
+
+export function useCopyToClipboard({
+  timeout = 2000,
+}: useCopyToClipboardProps) {
+  const [isCopied, setIsCopied] = React.useState<Boolean>(false);
+
+  const copyToClipboard = (value: string) => {
+    if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
+      return;
+    }
+
+    if (!value) {
+      return;
+    }
+
+    navigator.clipboard.writeText(value).then(() => {
+      setIsCopied(true);
+
+      setTimeout(() => {
+        setIsCopied(false);
+      }, timeout);
+    });
+  };
+
+  return { isCopied, copyToClipboard };
+}
+./components/ui/chat/index.ts
+import ChatInput from "./chat-input";
+import ChatMessages from "./chat-messages";
+
+export { type ChatHandler } from "./chat.interface";
+export { ChatInput, ChatMessages };
+./components/ui/chat/chat-actions.tsx
+import { PauseCircle, RefreshCw } from "lucide-react";
+
+import { Button } from "../button";
+import { ChatHandler } from "./chat.interface";
+
+export default function ChatActions(
+  props: Pick<ChatHandler, "stop" | "reload"> & {
+    showReload?: boolean;
+    showStop?: boolean;
+  },
+) {
+  return (
+    <div className="space-x-4">
+      {props.showStop && (
+        <Button variant="outline" size="sm" onClick={props.stop}>
+          <PauseCircle className="mr-2 h-4 w-4" />
+          Stop generating
+        </Button>
+      )}
+      {props.showReload && (
+        <Button variant="outline" size="sm" onClick={props.reload}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Regenerate
+        </Button>
+      )}
+    </div>
+  );
+}
+./components/ui/chat/chat.interface.ts
+import { Message } from "ai";
+
+export interface ChatHandler {
+  messages: Message[];
+  input: string;
+  isLoading: boolean;
+  handleSubmit: (
+    e: React.FormEvent<HTMLFormElement>,
+    ops?: {
+      data?: any;
+    },
+  ) => void;
+  handleInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  reload?: () => void;
+  stop?: () => void;
+  onFileUpload?: (file: File) => Promise<void>;
+  onFileError?: (errMsg: string) => void;
+}
+./components/ui/README.md
+Using the chat component from https://github.com/marcusschiesser/ui (based on https://ui.shadcn.com/)
+./components/ui/lib/utils.ts
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+./components/ui/input.tsx
+import * as React from "react";
+
+import { cn } from "./lib/utils";
+
+export interface InputProps
+  extends React.InputHTMLAttributes<HTMLInputElement> {}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          "min-w-[160px] flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          className,
+        )}
+        ref={ref}
+        {...props}
+      />
+    );
+  },
+);
+Input.displayName = "Input";
+
+export { Input };
+./components/ui/file-uploader.tsx
+"use client";
+
+import { Loader2, Paperclip } from "lucide-react";
+import { ChangeEvent, useState } from "react";
+import { buttonVariants } from "./button";
+import { cn } from "./lib/utils";
+
+export interface FileUploaderProps {
+  config?: {
+    inputId?: string;
+    fileSizeLimit?: number;
+    allowedExtensions?: string[];
+    checkExtension?: (extension: string) => string | null;
+    disabled: boolean;
+  };
+  onFileUpload: (file: File) => Promise<void>;
+  onFileError?: (errMsg: string) => void;
+}
+
+const DEFAULT_INPUT_ID = "fileInput";
+const DEFAULT_FILE_SIZE_LIMIT = 1024 * 1024 * 50; // 50 MB
+
+export default function FileUploader({
+  config,
+  onFileUpload,
+  onFileError,
+}: FileUploaderProps) {
+  const [uploading, setUploading] = useState(false);
+
+  const inputId = config?.inputId || DEFAULT_INPUT_ID;
+  const fileSizeLimit = config?.fileSizeLimit || DEFAULT_FILE_SIZE_LIMIT;
+  const allowedExtensions = config?.allowedExtensions;
+  const defaultCheckExtension = (extension: string) => {
+    if (allowedExtensions && !allowedExtensions.includes(extension)) {
+      return `Invalid file type. Please select a file with one of these formats: ${allowedExtensions!.join(
+        ",",
+      )}`;
+    }
+    return null;
+  };
+  const checkExtension = config?.checkExtension ?? defaultCheckExtension;
+
+  const isFileSizeExceeded = (file: File) => {
+    return file.size > fileSizeLimit;
+  };
+
+  const resetInput = () => {
+    const fileInput = document.getElementById(inputId) as HTMLInputElement;
+    fileInput.value = "";
+  };
+
+  const onFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    await handleUpload(file);
+    resetInput();
+    setUploading(false);
+  };
+
+  const handleUpload = async (file: File) => {
+    const onFileUploadError = onFileError || window.alert;
+    const fileExtension = file.name.split(".").pop() || "";
+    const extensionFileError = checkExtension(fileExtension);
+    if (extensionFileError) {
+      return onFileUploadError(extensionFileError);
+    }
+
+    if (isFileSizeExceeded(file)) {
+      return onFileUploadError(
+        `File size exceeded. Limit is ${fileSizeLimit / 1024 / 1024} MB`,
+      );
+    }
+
+    await onFileUpload(file);
+  };
+
+  return (
+    <div className="self-stretch">
+      <input
+        type="file"
+        id={inputId}
+        style={{ display: "none" }}
+        onChange={onFileChange}
+        accept={allowedExtensions?.join(",")}
+        disabled={config?.disabled || uploading}
+      />
+      <label
+        htmlFor={inputId}
+        className={cn(
+          buttonVariants({ variant: "secondary", size: "icon" }),
+          "cursor-pointer",
+          uploading && "opacity-50",
+        )}
+      >
+        {uploading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Paperclip className="-rotate-45 w-4 h-4" />
+        )}
+      </label>
+    </div>
+  );
+}
+./components/ui/button.tsx
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import * as React from "react";
+
+import { cn } from "./lib/utils";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline:
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean;
+}
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button";
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        {...props}
+      />
+    );
+  },
+);
+Button.displayName = "Button";
+
+export { Button, buttonVariants };
+./components/header.tsx
+import Image from "next/image";
+
+export default function Header() {
+  return (
+    <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
+        <a
+          href="https://www.llamaindex.ai/"
+          className="flex items-center justify-center font-nunito text-lg font-bold gap-2"
+        >
+          <span>A customGPT expert on the New York Times Lawsuit again OpenAI and Microsoft, Built for North Shore AI Developers using create-llama</span>
+        </a>
+    </div>
+  );
+}
+./components/transform.ts
+import { JSONValue, Message } from "ai";
+
+export const isValidMessageData = (rawData: JSONValue | undefined) => {
+  if (!rawData || typeof rawData !== "object") return false;
+  if (Object.keys(rawData).length === 0) return false;
+  return true;
+};
+
+export const insertDataIntoMessages = (
+  messages: Message[],
+  data: JSONValue[] | undefined,
+) => {
+  if (!data) return messages;
+  messages.forEach((message, i) => {
+    const rawData = data[i];
+    if (isValidMessageData(rawData)) message.data = rawData;
+  });
+  return messages;
+};
+./components/chat-section.tsx
+"use client";
+
+import { useChat } from "ai/react";
+import { useMemo } from "react";
+import { insertDataIntoMessages } from "./transform";
+import { ChatInput, ChatMessages } from "./ui/chat";
+
+export default function ChatSection() {
+  const {
+    messages,
+    input,
+    isLoading,
+    handleSubmit,
+    handleInputChange,
+    reload,
+    stop,
+    data,
+  } = useChat({
+    api: process.env.NEXT_PUBLIC_CHAT_API,
+    headers: {
+      "Content-Type": "application/json", // using JSON because of vercel/ai 2.2.26
+    },
+  });
+
+  const transformedMessages = useMemo(() => {
+    return insertDataIntoMessages(messages, data);
+  }, [messages, data]);
+
+  return (
+    <div className="space-y-4 max-w-5xl w-full">
+      <ChatMessages
+        messages={transformedMessages}
+        isLoading={isLoading}
+        reload={reload}
+        stop={stop}
+      />
+      <ChatInput
+        input={input}
+        handleSubmit={handleSubmit}
+        handleInputChange={handleInputChange}
+        isLoading={isLoading}
+        multiModal={process.env.NEXT_PUBLIC_MODEL === "gpt-4-vision-preview"}
+      />
+    </div>
+  );
+}
+./layout.tsx
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "Create Llama App",
+  description: "Generated by create-llama",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>{children}</body>
+    </html>
+  );
+}
+./favicon.ico
+ h6   (�00 h&�(  ��@��F���������C&��C���C��v���쐽eꌽA��D���D��Ə	𳈔홲c�S��R���D���J��X.��r����d�̅���V���Eg��C_��EC��I���^���@��3����͂���N���B���C���D���S���s��#��'����������p���G���C���D���R���n�������q�����������¡���a���G���I���Y��t�𱎫�����������������ˈ���X���Q���c��~�񬕐����������������ã���q���^���l1�A㪎	�����������������������������������������}���������������B�����������������( @ ������B��F>��M
+�����苹ꐽ>��C���C���B2��B���D|�V��풶쎼�돼r��I��B���DK��E���E����򴊘�W푼�쏽���C���E���D���D����#����퐻���D|��D���D���D�������d�������N���F���D���C���K��d��r�򹂡�������c���T���H���C���E4�����W���d��v�������΂���k���U���F���DG��F[��M���Z���j��|���率��ä��̇���j���R���G���D���E���D���E���Ek��D���H���R���`���r���𣏕��������¦��̈́���e���M���D���C���C���C���C���C���E���N���Z���k��}��`��������������á���}���]���H���C���C���C���B���C���E���J���W���f��x��*������������������Ƙ���u���V���F���C���C���C���C���E���K���V���e��v�����������������������ȍ���k���Q���E���C���C���B���F���M���X���f��w����T��������������������������̓���b���M���D���C���D���H���P���]���j��z���䀘@�����������������������������ś���x���]���K���D���F���L���U���a���o��~����o�����������������������������Ɏ���p���X���K���J���P���Z���g��u������T���b�����������������������������á��́���h���X���R���V���a���l��{�����띝
+���������������������������������ɏ���v���d���\���]���e|��sI�v񱍏�"���������������������������������Ɩ���}���m���bU��]�����������������u��������������������������������]������������������E�����������������������,���V�������������������������_��������������������������]���������������������������/�����������������������Z���F������������������O����������� ���
+������(0` �����������DR��Cf��EC��3���������ꕿ퐿W펾f쏻)��A'��D���C���B6��Du��C���C���G+�"�������.ߟ�퐼�뎼�폽������M
+��Dq��C���D���C��D���C���Db�v
+񶅄���<푹:쎼�펽�ꕿ��@��C���D���H ��FX��D���Ez��񮐰�,쐺�쏼�䔼��F_��D���EY��GX��D���D{���R���j����'풸�쐺�����B2��D���E���E`��D���D{�ĉ
+��񱍸��2픳�쒷�핹��H.��D���D���D���C���D��������}����)ߟ���R��P3��H���D���E���C���D���@��k��q��}��S突s���헯�햲f��WL��R���J���E���C���C���D<��U��^z��i���t���������Q��kp��`���T���K���E���C���E]����PI��V���_���k��w���������$�Ё���s���c���U���K���D���Dq��G��J���P���Y���c���o��z�����������ɗ��̆���t���c���T���I���D���E��E4��E?��D@��A;��F(��D����G2��F���L���S���]���h��t�����������ï��Ŝ��̇���s���`���Q���G���D���C���E���D���C���C���C���E���C}��E���I���O���W���a���m��z�����������Ũ���Ŝ��̅���p���\���O���E���C���B���C���C���C���C���C���C���D���F���M���T���^���h��u���򲌳�������W���������Ř��́���k���X���K���D���C���C���C���C���C���C���C���D���F���J���Q���[���e���q��}��h����������������������ȓ���{���e���S���G���C���C���C���C���C���C���C���D���F���I���Q���X���c���o��{��<�����������������������������ɍ���u���`���O���E���C���C���B���C���C���C���D���F���I���Q���X���b���n��y����1�����t������������������������ß��̆���o���Z���M���E���C���C���C���C���C���D���F���J���Q���Y���c���n��y��}7��'�������������������������������Ƙ������h���V���I���C���C���C���C���C���D���G���L���R���[���d���n��z����������X������������������������������������ȑ���y���c���S���H���C���C���C���C���E���I���N���U���]���g���q��|���𰎪��g����������������������������������á��ˉ���s���_���P���H���D���C���D���G���K���Q���X���`���i���t��~��������#��i�������������������������������������ƙ��͂���m���\���O���G���D���E���I���N���T���[���d���m��w��������'�����r������������������������������������������ȑ���{���i���Y���N���H���H���L���Q���W���`���h���q��{�������輪 ���������������������������������������������Ğ��ˈ���u���d���W���P���N���O���T���Z���c���k��u��~�����𪘭��'�����������������������������������������������Ǔ������o���a���X���S���T���X���_���g���o��z��������S�����7����������������������������������������������Ĝ��ˈ���x���j���`���[���Z���]���c���j���t{�}������\�����?����������������������������������������������â��ɍ���~���p���f���a���`���a_��`���������?����������������������������������������������æ��ɒ��ς���ss��iD��b"��f�����V�����������������������/��������������������������������������������������$������������������������������������������������������������������������������������������g�������������������������������
+���&�������������������������������������>���������������������������{���������8�����������������������������������_������������������������������������������;���#���������������������������������������������R�������������������������������x�������������������������������������������������E������������������H������	������&���./api/chat/engine/constants.mjs
+export const STORAGE_DIR = "./data";
+export const STORAGE_CACHE_DIR = "./cache";
+export const CHUNK_SIZE = 512;
+export const CHUNK_OVERLAP = 20;
+./api/chat/engine/index.ts
+import {
+  ContextChatEngine,
+  LLM,
+  serviceContextFromDefaults,
+  SimpleDocumentStore,
+  storageContextFromDefaults,
+  VectorStoreIndex,
+} from "llamaindex";
+import { CHUNK_OVERLAP, CHUNK_SIZE, STORAGE_CACHE_DIR } from "./constants.mjs";
+
+async function getDataSource(llm: LLM) {
+  const serviceContext = serviceContextFromDefaults({
+    llm,
+    chunkSize: CHUNK_SIZE,
+    chunkOverlap: CHUNK_OVERLAP,
+  });
+  let storageContext = await storageContextFromDefaults({
+    persistDir: `${STORAGE_CACHE_DIR}`,
+  });
+
+  const numberOfDocs = Object.keys(
+    (storageContext.docStore as SimpleDocumentStore).toDict(),
+  ).length;
+  if (numberOfDocs === 0) {
+    throw new Error(
+      `StorageContext is empty - call 'npm run generate' to generate the storage first`,
+    );
+  }
+  return await VectorStoreIndex.init({
+    storageContext,
+    serviceContext,
+  });
+}
+
+export async function createChatEngine(llm: LLM) {
+  const index = await getDataSource(llm);
+  const retriever = index.asRetriever();
+  retriever.similarityTopK = 3;
+
+  return new ContextChatEngine({
+    chatModel: llm,
+    retriever,
+  });
+}
+./api/chat/engine/generate.mjs
+import {
+  serviceContextFromDefaults,
+  SimpleDirectoryReader,
+  storageContextFromDefaults,
+  VectorStoreIndex,
+} from "llamaindex";
+
+import * as dotenv from "dotenv";
+
+import {
+  CHUNK_OVERLAP,
+  CHUNK_SIZE,
+  STORAGE_CACHE_DIR,
+  STORAGE_DIR,
+} from "./constants.mjs";
+
+// Load environment variables from local .env file
+dotenv.config();
+
+async function getRuntime(func) {
+  const start = Date.now();
+  await func();
+  const end = Date.now();
+  return end - start;
+}
+
+async function generateDatasource(serviceContext) {
+  console.log(`Generating storage context...`);
+  // Split documents, create embeddings and store them in the storage context
+  const ms = await getRuntime(async () => {
+    const storageContext = await storageContextFromDefaults({
+      persistDir: STORAGE_CACHE_DIR,
+    });
+    const documents = await new SimpleDirectoryReader().loadData({
+      directoryPath: STORAGE_DIR,
+    });
+    await VectorStoreIndex.fromDocuments(documents, {
+      storageContext,
+      serviceContext,
+      show_progress: true, 
+    });
+  });
+  console.log(`Storage context successfully generated in ${ms / 1000}s.`);
+}
+
+(async () => {
+  const serviceContext = serviceContextFromDefaults({
+    chunkSize: CHUNK_SIZE,
+    chunkOverlap: CHUNK_OVERLAP,
+  });
+
+  await generateDatasource(serviceContext);
+  console.log("Finished generating storage.");
+})();
+./api/chat/llamaindex-stream.ts
+import {
+  JSONValue,
+  createCallbacksTransformer,
+  createStreamDataTransformer,
+  experimental_StreamData,
+  trimStartOfStreamHelper,
+  type AIStreamCallbacksAndOptions,
+} from "ai";
+import { Response } from "llamaindex";
+
+type ParserOptions = {
+  image_url?: string;
+};
+
+function createParser(
+  res: AsyncIterable<Response>,
+  data: experimental_StreamData,
+  opts?: ParserOptions,
+) {
+  const it = res[Symbol.asyncIterator]();
+  const trimStartOfStream = trimStartOfStreamHelper();
+  return new ReadableStream<string>({
+    start() {
+      // if image_url is provided, send it via the data stream
+      if (opts?.image_url) {
+        const message: JSONValue = {
+          type: "image_url",
+          image_url: {
+            url: opts.image_url,
+          },
+        };
+        data.append(message);
+      } else {
+        data.append({}); // send an empty image response for the user's message
+      }
+    },
+    async pull(controller): Promise<void> {
+      const { value, done } = await it.next();
+      if (done) {
+        controller.close();
+        data.append({}); // send an empty image response for the assistant's message
+        data.close();
+        return;
+      }
+
+      const text = trimStartOfStream(value.response ?? "");
+      if (text) {
+        controller.enqueue(text);
+      }
+    },
+  });
+}
+
+export function LlamaIndexStream(
+  res: AsyncIterable<Response>,
+  opts?: {
+    callbacks?: AIStreamCallbacksAndOptions;
+    parserOptions?: ParserOptions;
+  },
+): { stream: ReadableStream; data: experimental_StreamData } {
+  const data = new experimental_StreamData();
+  return {
+    stream: createParser(res, data, opts?.parserOptions)
+      .pipeThrough(createCallbacksTransformer(opts?.callbacks))
+      .pipeThrough(createStreamDataTransformer(true)),
+    data,
+  };
+}
+./api/chat/route.ts
+import { StreamingTextResponse } from "ai";
+import { ChatMessage, MessageContent, OpenAI } from "llamaindex";
+import { NextRequest, NextResponse } from "next/server";
+import { createChatEngine } from "./engine";
+import { LlamaIndexStream } from "./llamaindex-stream";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const convertMessageContent = (
+  textMessage: string,
+  imageUrl: string | undefined,
+): MessageContent => {
+  if (!imageUrl) return textMessage;
+  return [
+    {
+      type: "text",
+      text: textMessage,
+    },
+    {
+      type: "image_url",
+      image_url: {
+        url: imageUrl,
+      },
+    },
+  ];
+};
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { messages, data }: { messages: ChatMessage[]; data: any } = body;
+    const userMessage = messages.pop();
+    if (!messages || !userMessage || userMessage.role !== "user") {
+      return NextResponse.json(
+        {
+          error:
+            "messages are required in the request body and the last message must be from the user",
+        },
+        { status: 400 },
+      );
+    }
+
+    const llm = new OpenAI({
+      model: (process.env.MODEL as any) ?? "gpt-3.5-turbo",
+      maxTokens: 512,
+    });
+
+    const chatEngine = await createChatEngine(llm);
+
+    // Convert message content from Vercel/AI format to LlamaIndex/OpenAI format
+    const userMessageContent = convertMessageContent(
+      userMessage.content,
+      data?.imageUrl,
+    );
+
+    // Calling LlamaIndex's ChatEngine to get a streamed response
+    const response = await chatEngine.chat({
+      message: userMessageContent,
+      chatHistory: messages,
+      stream: true,
+    });
+
+    // Transform LlamaIndex stream to Vercel/AI format
+    const { stream, data: streamData } = LlamaIndexStream(response, {
+      parserOptions: {
+        image_url: data?.imageUrl,
+      },
+    });
+
+    // Return a StreamingTextResponse, which can be consumed by the Vercel/AI client
+    return new StreamingTextResponse(stream, {}, streamData);
+  } catch (error) {
+    console.error("[LlamaIndex]", error);
+    return NextResponse.json(
+      {
+        error: (error as Error).message,
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+}
+./page.tsx
+import Header from "@/app/components/header";
+import ChatSection from "./components/chat-section";
+
+export default function Home() {
+  return (
+    <main className="flex min-h-screen flex-col items-center gap-10 p-8 lg:p-24 background-gradient">
+      <Header />
+      <ChatSection />
+    </main>
+  );
+}
+./globals.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    --ring: 215 20.2% 65.1%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+
+    --muted: 223 47% 11%;
+    --muted-foreground: 215.4 16.3% 56.9%;
+
+    --accent: 216 34% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --popover: 224 71% 4%;
+    --popover-foreground: 215 20.2% 65.1%;
+
+    --border: 216 34% 17%;
+    --input: 216 34% 17%;
+
+    --card: 224 71% 4%;
+    --card-foreground: 213 31% 91%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 1.2%;
+
+    --secondary: 222.2 47.4% 11.2%;
+    --secondary-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --ring: 216 34% 17%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+  }
+  .background-gradient {
+    background-color: #fff;
+    background-image: radial-gradient(
+        at 21% 11%,
+        rgba(186, 186, 233, 0.53) 0,
+        transparent 50%
+      ),
+      radial-gradient(at 85% 0, hsla(46, 57%, 78%, 0.52) 0, transparent 50%),
+      radial-gradient(at 91% 36%, rgba(194, 213, 255, 0.68) 0, transparent 50%),
+      radial-gradient(at 8% 40%, rgba(251, 218, 239, 0.46) 0, transparent 50%);
+  }
+}
+ChatGPT
+To enable conversation persistence between sessions, logins, and individual user accounts in your app, you need to implement a backend system capable of storing and retrieving user-specific conversation data. Here's a high-level overview of the modifications and additions you'll need to make:
+
+Database Integration:
+
+Set up a database to store user accounts and their associated conversation data. This can be a SQL (e.g., PostgreSQL, MySQL) or NoSQL (e.g., MongoDB, Firebase) database, depending on your preference and the complexity of the data you plan to store.
+User Authentication:
+
+Implement user authentication in your app. This can be done using JWT tokens, OAuth, or any secure authentication mechanism. This will allow you to identify users and store/retrieve their conversation data from the database based on their unique identifiers.
+Modifying the Chat Engine to Store Conversations:
+
+Modify the chat engine (./api/chat/engine/index.ts) to include functionality for saving and retrieving conversation data for each user. This might involve adjusting the chat engine's API to accept user identifiers and using these identifiers to store or fetch conversation histories from your database.
+Session Management:
+
+Implement session management on the client side (in your React components) and the server side. On the client side, you'll need to manage user sessions and include user identifiers in requests to the chat engine. On the server side, you'll need to parse these identifiers and use them to fetch or store data in the database.
+Client-Side Changes:
+
+Modify the chat input component (./components/ui/chat/chat-input.tsx) to include user session information in the requests it sends. This ensures that the chat engine can associate messages with the correct user account.
+Adjust the chat messages component (./components/ui/chat/chat-messages.tsx) to fetch the conversation history for the logged-in user when the component mounts. This way, users can see their previous messages when they log back in.
+Backend API for User Data:
+
+Create a new API route in your Next.js app for handling user data. This API will be responsible for authentication, user account management, and storing/retrieving conversation data from the database.
+Here is a simplified example of how you might adjust the chat engine to accept a user identifier and store conversation data:
+
+typescript
+Copy code
+// Inside your chat engine (./api/chat/engine/index.ts), modify the chat function to accept a user ID
+
+export async function createChatEngine(llm: LLM, userId: string) {
+  // Use userId to fetch or store conversation data in the database
+  // Your database logic goes here
+}
+And in the client-side chat input component:
+
+typescript
+Copy code
+// Example modification to include user session info in chat input component
+// You'll need to implement session management and fetch the user ID from the session
+
+const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  // Example: fetch userId from session (this is just a placeholder)
+  const userId = getSessionUserId(); 
+
+  // Include userId in the request to your chat engine
+  // Adjust your API call accordingly
+};
+This is a high-level overview, and the specific implementation details will vary based on your app's architecture, the technologies you're using, and how you choose to implement user authentication and session management.
+
+provide an explanation for how this app work
+ChatGPT
+This application is a chat interface that leverages a custom chat engine built on top of OpenAI's GPT models, integrated with LlamaIndex for enhanced conversation context and storage capabilities. Here's a breakdown of its components and how they work together:
+
+Frontend Components:
+Header (./components/header.tsx): Displays the application's header. It's a static component that might include branding or navigation links.
+
+ChatSection (./components/chat-section.tsx): The main chat interface where users can send and receive messages. It uses the useChat hook from ai/react to manage chat state and interactions.
+
+ChatInput (./components/ui/chat/chat-input.tsx): A form where users can type and submit their messages. It supports text input and can handle file uploads, including images. Messages are sent to the backend when the form is submitted.
+
+ChatMessages (./components/ui/chat/chat-messages.tsx): Displays a list of chat messages. It uses the messages array from the chat context to render individual messages, handling different message types like text or images.
+
+UploadImagePreview, CodeBlock, Markdown, etc.: These components are used to enhance the chat interface, allowing users to upload images, display code blocks with syntax highlighting, and render markdown-formatted messages.
+
+Backend Logic:
+Chat Engine Integration (./api/chat/engine/index.ts & ./api/chat/engine/generate.mjs): The backend uses LlamaIndex, a tool for creating vector embeddings of text data, to enhance the chatbot's responses. This integration involves processing chat messages to generate and store these embeddings, which can then be used to retrieve relevant context for future conversations.
+
+Custom API Route (./api/chat/route.ts): This route handles POST requests from the chat interface. It receives user messages, processes them through the chat engine (which includes generating vector embeddings and retrieving conversation context), and sends back the chatbot's response. The use of streaming responses allows for real-time communication between the client and server.
+
+LlamaIndex Stream (./api/chat/llamaindex-stream.ts): This module converts the asynchronous stream of responses from the LlamaIndex chat engine into a format that can be easily consumed by the frontend. It ensures that messages and potentially other types of data (like images) are streamed back to the client in real-time.
+
+How It Works Together:
+User Interaction: Users interact with the ChatInput component to send messages. These messages are captured and sent to the backend via the custom API route.
+
+Backend Processing: The backend receives the messages, processes them with the custom chat engine (which might include consulting the vector embeddings for context), and generates responses based on the input and the conversation history.
+
+Streaming Responses: The chat engine's responses are streamed back to the client in real-time, using the LlamaIndex Stream mechanism to ensure that messages are displayed as soon as they are generated.
+
+Displaying Messages: The ChatMessages component listens for new messages from the backend and updates the chat interface accordingly, showing the conversation history between the user and the chatbot.
+
+This architecture enables a dynamic and responsive chat experience, leveraging advanced NLP models for generating chatbot responses and vector storage for managing conversation context. The use of modern web technologies like React for the frontend and Node.js for the backend ensures that the app is scalable, maintainable, and capable of delivering a seamless user experience.
+
+provide an in depth explanation of each component, and make it both accessible and technical
+ChatGPT
+The application comprises several interconnected components, each serving a distinct purpose within the chat interface ecosystem. The technical design and functionality cater to developers while maintaining accessibility for users unfamiliar with the underlying technology. Here's an in-depth look at each component:
+
+Frontend Components:
+1. Header (./components/header.tsx):
+Purpose: Displays the application's header, which can include the application name, branding, or navigation links. It serves as a visual anchor for users, offering a consistent point of reference across different parts of the application.
+Technical Details: Implemented as a React functional component. It primarily consists of static HTML content and can include Next.js Image components for logos or branding images. The styling is managed through Tailwind CSS classes, allowing for responsive design and consistent styling.
+2. ChatSection (./components/chat-section.tsx):
+Purpose: Acts as the main container for the chat interface, orchestrating the display of chat messages and input fields. It facilitates user interaction with the chatbot by managing the flow of messages.
+Technical Details: Utilizes the useChat hook from ai/react to maintain chat state, including the list of messages and input values. The component renders ChatMessages for displaying messages and ChatInput for message input. State management within this component allows for real-time updates to the chat interface in response to user interactions and chatbot responses.
+3. ChatInput (./components/ui/chat/chat-input.tsx):
+Purpose: Provides a text input field and submission mechanism for users to send messages. It supports not only text input but also file uploads, including image files, enhancing the interactive capabilities of the chat interface.
+Technical Details: This React component handles form submission and file upload logic. It uses the useState hook to manage local state, such as the uploaded image URL, and the onSubmit event to process and send messages to the backend. The component integrates a file uploader, which leverages the FileReader API for asynchronous file reading and conversion to Base64, enabling image preview and upload functionality.
+4. ChatMessages (./components/ui/chat/chat-messages.tsx):
+Purpose: Displays the conversation history, rendering individual messages sent by the user and responses from the chatbot. It supports various message types, including text and images, and ensures that users can follow the conversation flow.
+Technical Details: This component iterates over the messages array from the chat context, rendering each message using ChatMessage sub-components. It employs the useEffect hook to automatically scroll to the latest message, enhancing user experience by keeping recent interactions in view. Messages are conditionally rendered based on their type, allowing for a dynamic chat experience that can include multimedia elements.
+Backend Logic:
+1. Chat Engine Integration (./api/chat/engine/index.ts & ./api/chat/engine/generate.mjs):
+Purpose: Enhances the chatbot's ability to generate relevant responses by processing chat messages to generate vector embeddings. These embeddings enable the retrieval of conversation context, improving the chatbot's understanding and responses.
+Technical Details: Integrates with LlamaIndex for creating vector embeddings from chat messages. The chat engine uses these embeddings to fetch relevant context from a conversation history stored in a backend database or file system. The process involves asynchronous operations for generating and storing embeddings, requiring efficient error handling and data management practices.
+2. Custom API Route (./api/chat/route.ts):
+Purpose: Acts as the communication bridge between the frontend chat interface and the backend chat engine. It handles POST requests containing user messages, processes them through the chat engine, and returns the chatbot's responses.
+Technical Details: Implemented in Next.js as an API route, it uses async/await syntax for handling asynchronous operations, including JSON parsing and chat engine interactions. The route dynamically adjusts to the chosen model (e.g., GPT-3.5 Turbo) and employs error handling to manage exceptions and provide meaningful feedback to the frontend.
+3. LlamaIndex Stream (./api/chat/llamaindex-stream.ts):
+Purpose: Converts the stream of responses from the LlamaIndex chat engine into a format easily consumed by the frontend. It ensures a seamless flow of messages and data between the backend and the user interface.
+Technical Details: Utilizes JavaScript's ReadableStream API to process asynchronous response streams. The implementation involves custom parsers and transformers to adapt LlamaIndex's output into a structure compatible with the frontend's expectations, including handling image URLs and text content.
+How They Work Together:
+User Interaction Flow: Users input messages through ChatInput, triggering a form submission event that sends the message to the backend via the custom API route.
+Backend Processing: Upon receiving a message, the backend leverages the chat engine to generate a response based on the current conversation

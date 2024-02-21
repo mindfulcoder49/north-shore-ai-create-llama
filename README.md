@@ -28,3 +28,7 @@ To learn more about LlamaIndex, take a look at the following resources:
 - [LlamaIndexTS Documentation](https://ts.llamaindex.ai) - learn about LlamaIndex (Typescript features).
 
 You can check out [the LlamaIndexTS GitHub repository](https://github.com/run-llama/LlamaIndexTS) - your feedback and contributions are welcome!
+
+Here is a link to a chatGPT discussion of this app:
+
+https://chat.openai.com/share/33a718ac-0efd-4f40-97d9-aafd5a02ad22
