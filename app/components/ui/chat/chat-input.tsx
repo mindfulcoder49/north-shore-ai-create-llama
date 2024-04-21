@@ -71,10 +71,6 @@ export default function ChatInput(
           value={props.input}
           onChange={props.handleInputChange}
         />
-        <FileUploader
-          onFileUpload={handleUploadFile}
-          onFileError={props.onFileError}
-        />
         <Button type="submit" disabled={props.isLoading}>
           Send message
         </Button>
