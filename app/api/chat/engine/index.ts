@@ -1,4 +1,5 @@
 import {
+  CondenseQuestionChatEngine,
   ContextChatEngine,
   LLM,
   serviceContextFromDefaults,
@@ -35,10 +36,34 @@ async function getDataSource(llm: LLM) {
 export async function createChatEngine(llm: LLM) {
   const index = await getDataSource(llm);
   const retriever = index.asRetriever();
-  retriever.similarityTopK = 3;
+  retriever.similarityTopK = 10;
 
   return new ContextChatEngine({
     chatModel: llm,
     retriever,
   });
+}
+
+
+
+
+
+export async function createCondenseQuestionChatEngine(llm: LLM) {
+  // Reuse getDataSource to initialize the query engine
+  const index = await getDataSource(llm);
+
+  // Assuming the CondenseQuestionChatEngine constructor expects similar parameters to ContextChatEngine
+  // Note: The actual parameters will depend on your CondenseQuestionChatEngine implementation details
+  const chatEngine = new CondenseQuestionChatEngine({
+    queryEngine: index, // Your initialized VectorStoreIndex or similar
+    chatHistory: [], // Initially empty, assuming your implementation does not require pre-existing history
+    serviceContext: serviceContextFromDefaults({
+      llm, // Pass the LLM instance
+      // Include any other relevant service context configurations here
+    }),
+    // If your CondenseQuestionChatEngine requires a condenseMessagePrompt, define it here
+    // For simplicity, this example does not include a custom condenseMessagePrompt implementation
+  });
+
+  return chatEngine;
 }

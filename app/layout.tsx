@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "OpenAILawsuitsGPT",
-  description: "Created for North Shore AI Developers using create-llama",
+  title: "RFProductsGPT",
+  description: "Created for Raymour and Flanigan HFCs Internal Use Only",
 };
 
 export default function RootLayout({

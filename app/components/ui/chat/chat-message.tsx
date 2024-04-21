@@ -46,13 +46,6 @@
         <ChatAvatar role={chatMessage.role} />
         <div className="group flex flex-1 justify-between gap-2">
           <div className="flex items-center">
-            {/* Checkbox input */}
-            <input
-              type="checkbox"
-              checked={isChecked}
-              onChange={toggleCheckbox}
-              className="mr-2"
-            />
             <div className="flex-1 space-y-4">
               {chatMessage.data && (
                 <ChatMessageData messageData={chatMessage.data} />
