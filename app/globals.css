@@ -81,7 +81,7 @@
       "calt" 1;
   }
   .background-gradient {
-    background-color: #121212; /* Dark background for contrast */
+    background-color: #aaaaaa; /* Dark background for contrast */
     background-image: 
       radial-gradient(at 20% 80%, hsla(210, 80%, 60%, 0.8) 0, transparent 30%),
       radial-gradient(at 90% 20%, hsla(30, 90%, 60%, 0.7) 0, transparent 30%),
